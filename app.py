@@ -10,7 +10,7 @@ app = Flask(__name__)
 # Gemini API
 # -----------------------------
 
-genai.configure(api_key="AIzaSyALNryjn3U2ar8xo8QFbgopNtLpdKYhKxg")
+genai.configure(api_key="YOUR API KEY")
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 CHAT_FILE = "chat_history.json"
