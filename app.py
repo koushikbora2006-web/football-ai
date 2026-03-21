@@ -7,10 +7,9 @@ import google.generativeai as genai
 app = Flask(__name__)
 
 # -----------------------------
-# Gemini API
+# Gemini API (FIXED ✅)
 # -----------------------------
-
-genai.configure(api_key="your api key")
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 CHAT_FILE = "chat_history.json"
@@ -18,7 +17,6 @@ CHAT_FILE = "chat_history.json"
 # -----------------------------
 # AI Prompt
 # -----------------------------
-
 FOOTBALL_DOMAIN_PROMPT = """
 You are Football AI ⚽, a professional football analyst.
 
@@ -40,22 +38,24 @@ def load_chats():
         try:
             with open(CHAT_FILE, "r") as f:
                 return json.load(f)
-        except json.JSONDecodeError:
+        except Exception as e:
+            print("Load error:", e)
             return []
     return []
 
 def save_chats(chats):
-    with open(CHAT_FILE, "w") as f:
-        json.dump(chats, f, indent=4)
+    try:
+        with open(CHAT_FILE, "w") as f:
+            json.dump(chats, f, indent=4)
+    except Exception as e:
+        print("Save error:", e)
 
 # -----------------------------
 # Conversation Memory
 # -----------------------------
 
 def get_memory(limit=5):
-
     chats = load_chats()
-
     memory = ""
 
     for chat in chats[-limit:]:
@@ -72,24 +72,13 @@ def get_memory(limit=5):
 def home():
     return render_template("index.html")
 
-# -----------------------------
-# Get Chat History
-# -----------------------------
-
 @app.route("/history", methods=["GET"])
 def history():
-    chats = load_chats()
-    return jsonify(chats)
-
-# -----------------------------
-# Chat Search API
-# -----------------------------
+    return jsonify(load_chats())
 
 @app.route("/search", methods=["GET"])
 def search_chat():
-
     query = request.args.get("q", "").lower()
-
     chats = load_chats()
 
     results = [
@@ -100,44 +89,37 @@ def search_chat():
     return jsonify(results)
 
 # -----------------------------
-# Smart Suggestions
+# Suggestions (SAFE)
 # -----------------------------
 
 def generate_suggestions(question):
-
     prompt = f"""
 Suggest 3 short football related questions similar to:
 {question}
 
 Return only the questions.
 """
-
     try:
         res = model.generate_content(prompt)
-
-        suggestions = res.text.split("\n")
-
-        return suggestions[:3]
-
-    except:
+        text = getattr(res, "text", "")
+        return [q.strip() for q in text.split("\n") if q.strip()][:3]
+    except Exception as e:
+        print("Suggestion error:", e)
         return []
 
-
-
 # -----------------------------
-# Chat API
+# Chat API (FIXED ✅)
 # -----------------------------
 
 @app.route("/chat", methods=["POST"])
 def chat():
+    try:
+        data = request.get_json()
+        user_message = data.get("message", "")
 
-    data = request.get_json()
+        memory = get_memory()
 
-    user_message = data.get("message", "")
-
-    memory = get_memory()
-
-    prompt = f"""
+        prompt = f"""
 {FOOTBALL_DOMAIN_PROMPT}
 
 Conversation:
@@ -153,24 +135,18 @@ Suggested Football Questions:
 - question
 """
 
-    try:
-
         response = model.generate_content(prompt)
+        text = getattr(response, "text", "Sorry, AI failed to respond.")
 
-        text = response.text
-
-        # Split answer and suggestions
         answer = text
         suggestions = []
 
         if "Suggested Football Questions:" in text:
-
             parts = text.split("Suggested Football Questions:")
-
             answer = parts[0].strip()
 
             suggestions = [
-                q.replace("-", "").replace("*","").strip()
+                q.replace("-", "").replace("*", "").strip()
                 for q in parts[1].split("\n")
                 if q.strip()
             ][:3]
@@ -194,60 +170,16 @@ Suggested Football Questions:
         })
 
     except Exception as e:
-        return jsonify({"error": str(e)})
-
-    # Conversation Memory
-    memory = get_memory()
-
-    prompt = f"""
-{FOOTBALL_DOMAIN_PROMPT}
-
-Conversation:
-{memory}
-
-User Question:
-{user_message}
-"""
-
-    try:
-
-        response = model.generate_content(prompt)
-
-        bot_reply = response.text if response.text else "No response from AI"
-
-        now = datetime.now()
-
-        chat_entry = {
-            "date": now.strftime("%Y-%m-%d"),
-            "time": now.strftime("%H:%M:%S"),
-            "user_message": user_message,
-            "bot_reply": bot_reply
-        }
-
-        chats = load_chats()
-        chats.append(chat_entry)
-
-        save_chats(chats)
-
-        suggestions = generate_suggestions(user_message)
-
-        return jsonify({
-            "reply": bot_reply,
-            "suggestions": suggestions
-        })
-
-    except Exception as e:
+        print("CHAT ERROR:", e)
         return jsonify({"error": str(e)}), 500
 
 # -----------------------------
-# DELETE CHAT API
+# Delete Chat
 # -----------------------------
 
 @app.route("/delete", methods=["POST"])
 def delete_chat():
-
     data = request.get_json()
-
     user_message = data.get("user_message")
     time = data.get("time")
 
@@ -259,17 +191,15 @@ def delete_chat():
     ]
 
     save_chats(updated_chats)
-
     return jsonify({"status": "deleted"})
 
 # -----------------------------
-# RENAME CHAT API
+# Rename Chat
 # -----------------------------
 
 @app.route("/rename", methods=["POST"])
 def rename_chat():
-
-    data = request.json
+    data = request.get_json()
 
     old_message = data.get("old_message")
     time = data.get("time")
@@ -282,12 +212,12 @@ def rename_chat():
             chat["user_message"] = new_name
 
     save_chats(chats)
-
     return jsonify({"status": "renamed"})
 
 # -----------------------------
-# Run App
+# Render Entry Point (CRITICAL FIX ✅)
 # -----------------------------
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
