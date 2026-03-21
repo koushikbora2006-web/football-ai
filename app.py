@@ -70,7 +70,7 @@ def get_memory(limit=5):
 
 @app.route("/")
 def home():
-    return render_template("index.html")
+    return "Server is working "
 
 @app.route("/history", methods=["GET"])
 def history():
